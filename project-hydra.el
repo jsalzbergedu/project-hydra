@@ -89,7 +89,7 @@ To use, either use one of the keys defined in project-hydra-rules like this:
 :and (key . other-binding)
 :and (key . and-so-on))
 "
-  (declare (indent defun) (doc-string 3))
+  (declare (indent defun))
   (append (project-hydra--begin-body name) (project-hydra--parse-body body)))
 
 (defun sillyfun ()
