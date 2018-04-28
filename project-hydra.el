@@ -27,7 +27,7 @@
 ;;  :test test-fun)
 
 (require 'hydra)
-(require 'dash)
+(require 'cl-seq)
 
 (defun project-hydra--general-rule (sym key)
   "The general rule: (:sym . key) which will be applied to sexp"
