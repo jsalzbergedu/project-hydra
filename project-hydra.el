@@ -11,14 +11,14 @@
 ;;
 ;; (project-hydra hydra-java
 ;;  :test test-fun
-;;  :build build-fun
+;;  :compile compile-fun
 ;;  :run run-fun
 ;;  :and ("s" style-check-fun))
 ;;
 ;; which becomes
 ;;
 ;;   (defhydra hydra-java (:color blue :hint nil)
-;;     ("b" build-fun)
+;;     ("c" compile-fun)
 ;;     ("t" test-fun)
 ;;     ("r" run-fun)
 ;;     ("s" style-check-fun))
@@ -35,9 +35,11 @@
 
 ;; (project-hydra doot-hydra
 ;;   :test sillyfun
-;;   :build sillyfun
+;;   :compile sillyfun
 ;;   :run sillyfun
 ;;   :stylecheck sillyfun
+;;   :search sillyfun
+;;   :git sillyfun
 ;;   :and ("v" sillyfun))
 ;;
 ;;
@@ -49,15 +51,18 @@
 ;; ^Project Operations and Tasks^
 ;; ----------------------------
 ;; _t_ sillyfun
-;; _b_ sillyfun
+;; _c_ sillyfun
 ;; _r_ sillyfun
 ;; _s_ sillyfun
+;; _g_ sillyfun
+;; _m_ sillyfun
 ;; _v_ sillyfun
 ;; "
 ;;   ("t" sillyfun)
-;;   ("b" sillyfun)
+;;   ("c" sillyfun)
 ;;   ("r" sillyfun)
 ;;   ("s" sillyfun)
+;;   ("m" sillyfun)
 ;;   ("v" sillyfun))
 
 ;;; Code:
@@ -77,9 +82,11 @@
 
 (defvar project-hydra-rules
   '((:test "t")
-    (:build "b")
+    (:compile "c")
     (:run "r")
-    (:stylecheck "s"))
+    (:stylecheck "s")
+    (:search "g")
+    (:git "m"))
   "The rules that bind a key (in the symbol sense) (e.g. :test) to a key (in the keyboard sense).")
 
 (defun project-hydra--and-rule (sexp)
@@ -91,8 +98,17 @@
   "Parse one SEXP from the body."
   (let* ((normal-rules (cl-map 'list 'project-hydra--general-rule-list project-hydra-rules))
 	 (rules (cons 'project-hydra--and-rule normal-rules)))
-    (message "%s" rules)
     (car (cl-remove-if-not 'identity (cl-map 'list (lambda (a) (funcall a sexp)) rules)))))
+
+
+(defun project-hydra--pair-off (list)
+  "Pair off every two elemetns in LIST.
+Returns nill if the list is not even."
+  (when (cl-evenp (length list))
+    (let ((list list) pairs)
+      (while list
+	(push (list (pop list) (pop list)) pairs))
+      (nreverse pairs))))
 
 (defun project-hydra--pair-off (list)
   "Pair off every two elements in LIST."
@@ -119,16 +135,57 @@
   "Right pad S with LEN spaces."
   (concat s (cl-loop repeat len concat " ")))
 
+(defun project-hydra--rightpad-to (s len)
+  "Right pad S until it is LEN spaces."
+  (let ((extra-len (- len (length s))))
+    (if (<= extra-len 0)
+	s
+      (project-hydra--rightpad s extra-len))))
+
 (defun project-hydra--docstring-rule (sexp)
   "Generate a docstring from SEXP of the parsed results of project-hydra--parse-body."
-  (format "_%s_ %s\n" (car sexp) (cadr sexp)))
+  (format "_%s_ %s " (car sexp) (cadr sexp)))
+
+(defvar project-hydra-docstring-header (concat "\n"
+					       "^Project Operations and Tasks^\n"
+					       "----------------------------\n")
+  "The docstring header for the project hydra")
+
+(defun project-hydra--cleave (list)
+  "Cleave even length LIST into two lists."
+  (let ((halflen (/ (length list) 2))
+	(list list)
+	(i 0)
+	fst)
+    (while (< i halflen)
+      (cl-incf i)
+      (push (pop list) fst))
+    (list (nreverse fst) list)))
+
+(defun project-hydra--longest (list)
+  "Return the length of the longest string in LIST." 
+  (car (sort (cl-map 'list 'length list) '>)))
+
+(defun project-hydra--gen-docstring-even (body)
+  "Generate a docstring from the parsed results of BODY, assuming that body has an even number of members."
+  (let* ((lists (project-hydra--cleave (cl-map 'list 'project-hydra--docstring-rule body)))
+	 (fst (car lists))
+	 (snd (cadr lists))
+	 (fst-longest-len (project-hydra--longest fst))
+	 (rightpad (lambda (s) (project-hydra--rightpad-to s fst-longest-len)))
+	 (fst-equal-lens (cl-map 'list rightpad fst))
+	 (combined (cl-map 'list (lambda (a) (concat a "\n")) (cl-map 'list 'concat fst-equal-lens snd))))
+    (mapc 'message fst-equal-lens)
+    (list (cl-reduce 'concat combined :initial-value project-hydra-docstring-header))))
 
 (defun project-hydra--gen-docstring (body)
   "Generate a docstring from the parsed results of BODY."
-  (list (cl-reduce 'concat (cl-map 'list 'project-hydra--docstring-rule body)
-		   :initial-value (concat "\n"
-					  "^Project Operations and Tasks^\n"
-					  "----------------------------\n"))))
+  (if (cl-evenp (length body))
+      (project-hydra--gen-docstring-even body)
+    (let ((last (last body))
+	  (butlast (butlast body)))
+      (list (apply 'concat (append (project-hydra--gen-docstring-even butlast)
+				   (list (apply 'project-hydra--docstring-rule last))))))))
 
 (defmacro project-hydra (name &rest body)
   "A template for generating for projects in different languages.
